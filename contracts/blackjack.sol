@@ -1,54 +1,49 @@
-pragma solidity ^0.4.19;
-
+pragma solidity ^0.4.24;
 
 contract Casino{
-    //bet amount
-    uint256 private bet_amount;
-    //owner of casino
-    address private casino_owner;
-    //player's opened cards;
-    uint8[] private cards_opened;
-    // keep count of each of 13 cards
-    uint8[] private deck_count;
-    // number of cards opened by player
-    uint8 private num_opened;
-    // total count of player's cards
-    uint8 private player_count;
-    // minimum  bet value;
-    uint private minimum_bet;
-    // maximum wait after player's last move before ending the game
-    uint private max_wait;
-    // time of the last move by the player
-    uint256 private bet_start;
-    // player's address
-    address private player;
+    uint private bet_amount;                                                    //bet amount
+    uint public minimum_bet;                                                    // minimum  bet value;
+    uint private max_wait;                                                      // maximum wait after player's last move before ending the game
+    uint public bet_start;                                                      // time of the last move by the player
     
-    //is enough money in casino accound
-    modifier isDepositEnough (uint256 val, uint256 _minimum_bet) {
+    uint8 private player_count;                                                 // total count of player's cards
+    uint8 private num_opened;                                                   // number of cards opened by player
+    
+    uint8[] private cards_opened;                                               //player's opened cards;
+    uint8[] private deck_count;                                                 // keep count of each of 13 cards
+    
+    address private casino_owner;                                               //owner of casino
+    address private player;                                                     // player's address
+    
+    
+    //----------------- Modifiers ------------------\\
+    
+    modifier isDepositEnough (uint val, uint _minimum_bet)                      // Check if dealer has sufficient balance to host Blackjack game
+    {                    
         require(val >= (3 * (minimum_bet/2)), "Casino should have enough balance for gameplay");
         _;
     }
     
-    // do player has minimum amount required to bet
+    // Cehck if player has placed atleast the minimum beting amount
     modifier canBet(uint256 val) {
         require(val >= minimum_bet, "player should bet more than minimum amount");
         require(player == 0, "play already going on");
         _;
     }
     
-    // is caller already playing
-    modifier isPlayer(address playa) {
-        require(playa == msg.sender, "only player can call game functions");
+    // Is caller already playing
+    modifier isPlayer(address _player) {
+        require(_player == msg.sender, "only player can call game functions");
         _;
     }
     
-    // check if address is owner of contract
-    modifier ownerOnly(address playa) {
-        require(playa == casino_owner, "only owner can withdraw");
+    // Check if address is owner of contract
+    modifier onlyOwner {
+        require(msg.sender == casino_owner, "only owner can withdraw");
         _;
     }
     
-    // constructor
+    //----------------- Constructor ------------------\\
     constructor(uint _minimum_bet, uint _max_wait) public payable isDepositEnough(msg.value, _minimum_bet){
         casino_owner = msg.sender;
         minimum_bet = _minimum_bet;
@@ -169,7 +164,7 @@ contract Casino{
     }
     
     
-    function withdraw() public ownerOnly(msg.sender){
+    function withdraw() public onlyOwner{
         if(now > bet_start + max_wait) {
             _endgame();
         } else if(player == 0) {
@@ -186,6 +181,11 @@ contract Casino{
                 _aceCount++;
         }
      
+    }
+    
+    function kill() public onlyOwner{
+    // destroy contract
+        selfdestruct(casino_owner);
     }
     
 }
