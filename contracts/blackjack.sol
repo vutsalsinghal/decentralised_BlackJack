@@ -20,8 +20,11 @@ contract BlackJack{
     
     uint8 private player_score;                                                 // Total sum of player's cards value
     uint8 private player_TotalCards;                                            // No. of cards opened by player
+    uint8 private dealer_score;                                                 // Total sum of dealer's cards value
+    uint8 private dealer_TotalCards;                                            // No. of cards opened by dealer
     
     uint8[] private player_cards;                                               // Array of player's open cards
+    uint8[] private dealer_cards;                                               // Array of dealer's open cards
     uint8[] private deck_count;                                                 // Keep count of each of 13 cards
     
     address private casino_owner;                                               // Owner of casino
@@ -49,7 +52,7 @@ contract BlackJack{
     //----------------------------------------- Constructor -----------------------------------------\\
     constructor() public payable{
         casino_owner = msg.sender;
-        minimum_bet = 0.01 ether;
+        minimum_bet = 0.01 ether;                                               // default values; can be changed using changeValues()
         max_wait = 200;
         
         for(uint8 i = 0; i < 13; i++) {
@@ -58,91 +61,107 @@ contract BlackJack{
     }
     
     // Entry point for placing bet
-    function placeBet() public payable returns(uint8[2] _playerCards){
+    function placeBet() public payable returns(uint8[] playerCards, uint8[] dealerCards){
         require(msg.value >= minimum_bet, "Bet amt should be >= min bet amt");  //Check if player has placed atleast the minimum beting amount
         require(playerAddr == 0, "Play already going on");
 
         bet_amount = msg.value;
         playerAddr = msg.sender;
-        _playerCards[0] = _shuffleAndTake();
-        _playerCards[1] = _shuffleAndTake();
-        player_cards[player_TotalCards++] = _playerCards[0];
-        player_cards[player_TotalCards++] = _playerCards[1];
-        player_score += (_playerCards[0] + _playerCards[1]);
+
+        uint8 drawCard1 = _shuffleAndTake();
+        uint8 drawCard2 = _shuffleAndTake();
+        uint8 drawCard3 = _shuffleAndTake();
+
+        dealer_cards[dealer_TotalCards++] = drawCard1;                          // dealer draws 1 card
+        player_cards[player_TotalCards++] = drawCard2;                          // Player draws 2 cards
+        player_cards[player_TotalCards++] = drawCard3;
+        
+        dealer_score += drawCard1;
+        player_score += (drawCard2 + drawCard3);
         
         if ((player_score + 9) == 21){
             _endgame();
         } else{
             bet_start = now;
         }
+        
+        return (player_cards, dealer_cards);
     }
     
     // Hit, called by player
-    function hit() public isPlayer returns(uint8 card) {
-        if(now > bet_start + max_wait) {                                        // Player has to hit withen max_wait period
+    function hit() public isPlayer returns(uint8 card, uint8[] playerCards) {
+        if(now > (bet_start + max_wait)){                                       // Player has to hit withen max_wait period
             _endgame();
         } else {
             card = _shuffleAndTake();
             player_cards[player_TotalCards++] = card;
             player_score += card;
 
-            if (player_score > 21) reset_game();                                // Busted!
-
-            bet_start = now;
+            if (player_score > 21){                                             // Busted!
+                reset_game();
+            } else{
+                bet_start = now;
+            }
         }
+
+        return (card, player_cards);
     }
 
     // view function to check player's cards
-    function viewPlayerCards() view public isPlayer returns(uint _playerTotal, uint _aceCount){
-        _playerTotal = player_score;
-        _aceCount = 0;
+    function viewPlayerCards() view public isPlayer returns(uint playerScore, uint8 totAces){
+        totAces = 0;
         for (uint8 i = 0; i < player_TotalCards; i++){
-            if(player_cards[i] == 1) _aceCount++;
+            if(player_cards[i] == 1) totAces++;
         }
+        
+        return (player_score, totAces);
     }
 
     // Function to be called by player when he wants to stop
-    function revealandStop() public isPlayer returns(bool _result) {
-       _result = _endgame();
+    function revealAndStop() public isPlayer returns(bool result, uint8 playerScore, uint8 dealerScore){
+       return (_endgame(), player_score, dealer_score);
     }
     
     // Function to check cards and end game
-    function _endgame() internal returns(bool _result) {
-         uint8 dealerScore =_revealDealerCards();
-        _result = false;
-        
+    function _endgame() internal returns(bool result){
+        result = false;
+
         for (uint8 i = 0; i < player_TotalCards; i++) {
-            if (player_cards[i] == 1 && player_score + 9 <= 21)
-                player_score += 9;
+            if (player_cards[i] == 1 && player_score + 11 <= 21)                // Ace = 1 or 11
+                player_score += 11;
         }
+
         if (player_score > 21 ){                                                // Busted!
-            
-        } else if(dealerScore > 21 || player_score > dealerScore) {             // Player wins
-            playerAddr.transfer(2*bet_amount);
-            _result = true;
-        } else if(player_score == dealerScore) {
-            playerAddr.transfer(bet_amount);
-            _result = false;
+            result = false;
+        } else{
+            _revealDealerCards();                                               // Dealer draws till dealer_score <= 17
+
+            if(dealer_score > 21 || player_score > dealer_score){
+                playerAddr.transfer(2*bet_amount);                              // Player wins 2*bet_amount
+                result = true;
+            } else if(player_score == dealer_score){
+                playerAddr.transfer(bet_amount);                                // Player gets back his bet_amount
+                result = false;
+            }
         }
 
         reset_game();
     }
 
     // Reveals draws of dealer, dealer draws all cards at the end, to prevent revealing
-    function _revealDealerCards() internal returns(uint8 dealerScore){
-        dealerScore = 0;
+    function _revealDealerCards() internal{
         uint8 card;
-        uint8 ace_count = 0;
+        uint8 _totAces = 0;
         
-        for (uint8 i = 0; i < player_TotalCards; i++){
+        while (dealer_score <= 17){                                             // Dealer draws till score <= 17
             card = _shuffleAndTake();
-            dealerScore += card;
-            if (card == 1) ace_count++;
+            dealer_score += card;
+            if (card == 1) _totAces++;
         }
     
-        if (dealerScore < 21){
-            for (i = 0; i < ace_count; i++){
-                if (dealerScore + 9 <= 21) dealerScore += 9;
+        if (dealer_score < 21){
+            for (uint8 i = 0; i < _totAces; i++){
+                if (dealer_score + 9 <= 21) dealer_score += 9;
             }
         }
     }
@@ -169,7 +188,19 @@ contract BlackJack{
                 card_found = true;
             }
         }
-        
+    }
+
+    function ifPlayerUnresponsive() external onlyOwner{
+        if(now > bet_start + max_wait) {                                        // Owner can end game (after wait period is over) if player is unresponsive
+            _endgame();
+        } else {
+
+        }
+    }
+
+    function changeValues(uint _minimum_bet, uint _max_wait) external onlyOwner{
+        minimum_bet = _minimum_bet;
+        max_wait = _max_wait;
     }
 
     function reset_game() internal{
