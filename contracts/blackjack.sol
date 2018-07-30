@@ -13,18 +13,18 @@ pragma solidity ^0.4.24;
 
 
 contract BlackJack{
-    uint public bet_amount;                                                     // bet amount
-    uint public minimum_bet;                                                    // minimum  bet value;
-    uint public max_wait;                                                       // maximum wait after player's last move before ending the game
-    uint public bet_start;                                                      // time of the last move by the player
+    uint public bet_amount;                                                     // Bet amount
+    uint public minimum_bet;                                                    // Min  bet value;
+    uint public max_wait;                                                       // Max wait after player's last move before ending the game
+    uint public bet_start;                                                      // Time of the last move by the player
     
-    uint8 private player_score;                                                 // total sum of player's cards value
-    uint8 private player_TotalCards;                                            // no. of cards opened by player
+    uint8 private player_score;                                                 // Total sum of player's cards value
+    uint8 private player_TotalCards;                                            // No. of cards opened by player
     
-    uint8[] private player_cards;                                               // array of player's open cards
-    uint8[] private deck_count;                                                 // keep count of each of 13 cards
+    uint8[] private player_cards;                                               // Array of player's open cards
+    uint8[] private deck_count;                                                 // Keep count of each of 13 cards
     
-    address private casino_owner;                                               // owner of casino
+    address private casino_owner;                                               // Owner of casino
     address private playerAddr;                                                 // player's address
     
     
@@ -70,10 +70,11 @@ contract BlackJack{
         player_cards[player_TotalCards++] = _playerCards[1];
         player_score += (_playerCards[0] + _playerCards[1]);
         
-        if ((player_score + 9) == 21) {
+        if ((player_score + 9) == 21){
             _endgame();
-        } else
-        bet_start = now;
+        } else{
+            bet_start = now;
+        }
     }
     
     // Hit, called by player
@@ -123,7 +124,7 @@ contract BlackJack{
             playerAddr.transfer(bet_amount);
             _result = false;
         }
-        
+
         reset_game();
     }
 
