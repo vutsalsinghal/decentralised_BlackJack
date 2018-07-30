@@ -1,7 +1,6 @@
 pragma solidity ^0.4.24;
 
-
-/**
+/*
  * @title  - Decentralised BlackJack
  * 
  * @author - Vutsal Singhal <vutsalsinghal[at]gmail[dot]com>
@@ -9,8 +8,7 @@ pragma solidity ^0.4.24;
  * 
  * @notice - 
  * @dev    - 
- */
-
+*/
 
 contract BlackJack{
     uint public bet_amount;                                                     // Bet amount
@@ -28,7 +26,7 @@ contract BlackJack{
     uint8[] private deck_count;                                                 // Keep count of each of 13 cards
     
     address private casino_owner;                                               // Owner of casino
-    address private playerAddr;                                                 // player's address
+    address private playerAddr;                                                 // Player's address
     
     
     //----------------------------------------- Modifiers -----------------------------------------\\
@@ -50,9 +48,9 @@ contract BlackJack{
     }
     
     //----------------------------------------- Constructor -----------------------------------------\\
-    constructor() public payable{
+    constructor() public{
         casino_owner = msg.sender;
-        minimum_bet = 0.01 ether;                                               // default values; can be changed using changeValues()
+        minimum_bet = 0.01 ether;                                               // Default values; can be changed using changeValues()
         max_wait = 200;
         
         for(uint8 i = 0; i < 13; i++) {
@@ -62,26 +60,31 @@ contract BlackJack{
     
     // Entry point for placing bet
     function placeBet() public payable isdealerBalanceSufficient(msg.value) returns(uint8[] playerCards, uint8[] dealerCards){
-        require(msg.value >= minimum_bet, "Bet amt should be >= min bet amt");  //Check if player has placed atleast the minimum beting amount
-        require(playerAddr == 0, "Play already going on");
+        require(msg.value >= minimum_bet, "Bet amt should be >= min bet amt");  // Check if player has placed atleast the minimum beting amount
+        require(playerAddr == 0, "Play already going on");                      // Check if no game in progress    
 
-        bet_amount = msg.value;
         playerAddr = msg.sender;
+        bet_amount = msg.value;
 
         uint8 drawCard1 = _shuffleAndTake();
         uint8 drawCard2 = _shuffleAndTake();
         uint8 drawCard3 = _shuffleAndTake();
 
-        dealer_cards[dealer_TotalCards++] = drawCard1;                          // dealer draws 1 card
+        dealer_cards[dealer_TotalCards++] = drawCard1;                          // Dealer draws 1 card
         player_cards[player_TotalCards++] = drawCard2;                          // Player draws 2 cards
         player_cards[player_TotalCards++] = drawCard3;
         
         dealer_score += drawCard1;
         player_score += (drawCard2 + drawCard3);
         
-        if ((player_score + 9) == 21){
-            _endgame();
-        } else{
+        for (uint8 i = 0; i < player_TotalCards; i++) {
+            if (player_cards[i] == 1 && player_score + 10 <= 21)                // Check for Ace; Ace = 1 or 11
+                player_score += 10;
+        }
+
+        if (player_score == 21){
+            revealAndStop();
+        }else{
             bet_start = now;
         }
         
@@ -108,13 +111,8 @@ contract BlackJack{
     }
 
     // view function to check player's cards
-    function viewPlayerCards() view public isPlayer returns(uint playerScore, uint8 totAces){
-        totAces = 0;
-        for (uint8 i = 0; i < player_TotalCards; i++){
-            if(player_cards[i] == 1) totAces++;
-        }
-        
-        return (player_score, totAces);
+    function viewPlayerCards() view external isPlayer returns(uint playerScore, uint8[] playerCards){
+        return (player_score, player_cards);
     }
 
     // Function to be called by player when he wants to stop
@@ -127,8 +125,8 @@ contract BlackJack{
         result = false;
 
         for (uint8 i = 0; i < player_TotalCards; i++) {
-            if (player_cards[i] == 1 && player_score + 11 <= 21)                // Ace = 1 or 11
-                player_score += 11;
+            if (player_cards[i] == 1 && player_score + 10 <= 21)                // Ace = 1 or 11
+                player_score += 10;
         }
 
         if (player_score > 21 ){                                                // Busted!
@@ -155,6 +153,7 @@ contract BlackJack{
         
         while (dealer_score <= 17){                                             // Dealer draws till score <= 17
             card = _shuffleAndTake();
+            dealer_cards[dealer_TotalCards++] = card;
             dealer_score += card;
             if (card == 1) _totAces++;
         }
@@ -217,6 +216,7 @@ contract BlackJack{
     function transferToDealer() public payable{}                                // Anyone can send Ether to contract
    
     function transferFromDealer(uint _amount) external onlyOwner{
+        require(playerAddr == 0, "Can't withdraw while game in progress");      // Check if no game in progress
         casino_owner.transfer(_amount);
     }
     
