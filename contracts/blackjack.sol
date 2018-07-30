@@ -33,8 +33,8 @@ contract BlackJack{
     
     //----------------------------------------- Modifiers -----------------------------------------\\
     
-    modifier isdealerBalanceSufficient (uint val, uint _minimum_bet){           // Check if dealer has sufficient balance to host Blackjack game               
-        require(val >= (3*minimum_bet), "Casino should have enough balance for gameplay");
+    modifier isdealerBalanceSufficient (uint _bet_amt){                         // Check if dealer has sufficient balance to host Blackjack game               
+        require(address(this).balance >= 2*_bet_amt, "Casino should have enough balance for gameplay");
         _;
     }
     
@@ -61,7 +61,7 @@ contract BlackJack{
     }
     
     // Entry point for placing bet
-    function placeBet() public payable returns(uint8[] playerCards, uint8[] dealerCards){
+    function placeBet() public payable isdealerBalanceSufficient(msg.value) returns(uint8[] playerCards, uint8[] dealerCards){
         require(msg.value >= minimum_bet, "Bet amt should be >= min bet amt");  //Check if player has placed atleast the minimum beting amount
         require(playerAddr == 0, "Play already going on");
 
