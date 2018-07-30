@@ -92,7 +92,7 @@ contract BlackJack{
     }
     
     // Hit, called by player
-    function hit() public isPlayer returns(uint8 card, uint8[] playerCards) {
+    function hit() public isPlayer returns(uint8 card, uint8[] playerCards){
         if(now > (bet_start + max_wait)){                                       // Player has to hit withen max_wait period
             _endgame();
         } else {
@@ -151,7 +151,7 @@ contract BlackJack{
         uint8 card;
         uint8 _totAces = 0;
         
-        while (dealer_score <= 17){                                             // Dealer draws till score <= 17
+        while (dealer_score <= 17){                                             // Dealer draws till dealer_score <= 17
             card = _shuffleAndTake();
             dealer_cards[dealer_TotalCards++] = card;
             dealer_score += card;
@@ -160,7 +160,7 @@ contract BlackJack{
     
         if (dealer_score < 21){
             for (uint8 i = 0; i < _totAces; i++){
-                if (dealer_score + 9 <= 21) dealer_score += 9;
+                if (dealer_score + 10 <= 21) dealer_score += 10;
             }
         }
     }
