@@ -10,6 +10,7 @@ pragma solidity ^0.4.24;
 */
 
 contract BlackJack{
+    uint counter;
     uint public total_BetAmount;                                                // Total bet amount
     uint public minimum_bet;                                                    // Min  bet value;
     uint public max_wait;                                                       // Max wait after player's last move before ending the game
@@ -19,6 +20,7 @@ contract BlackJack{
         bool gotPaid;                                                           // Player has already received winnings
         uint bet_amount;                                                        // Bet amount
         uint bet_start;                                                         // Time of the last move by the player
+        uint add_time;                                                          // Owner can give a player more time
         uint8 player_score;                                                     // Total sum of player's cards value
         uint8 player_TotalCards;                                                // No. of cards opened by player
         uint8 dealer_score;                                                     // Total sum of dealer's cards value
@@ -62,19 +64,19 @@ contract BlackJack{
     }
     
     // Entry point for placing bet
-    function placeBet() public payable isdealerBalanceSufficient(msg.value+total_BetAmount) returns(uint8[8] playerCards, uint8[8] dealerCards){
+    function placeBet() public payable isdealerBalanceSufficient(msg.value+total_BetAmount) returns(uint8 playerScore, uint8[8] playerCards, uint8 dealerScore, uint8[8] dealerCards, uint profit_amt){
         require(msg.value >= minimum_bet, "Bet amt should be >= min bet amt");  // Check if player has placed atleast the min beting amount
         require(addrToGameId[msg.sender] == 0, "Play already going on");        // Check if player is not already playing
         
         total_BetAmount += msg.value;                                           // Total betting amount by all players
 
         addrToGameId[msg.sender] = ++lastGameId;                                // Create a new game instance
-
-        gameInfo[lastGameId].playerAddr = msg.sender;
         gameInfo[lastGameId].bet_amount = msg.value;
+        gameInfo[lastGameId].playerAddr = msg.sender;
+        gameInfo[lastGameId].add_time = 0;                                      // Default is 0
         gameInfo[lastGameId].gotPaid = false;
 
-        for(uint8 i = 0; i < 13; i++) {
+        for(uint8 i = 0; i < 13; i++) {                                         // Initialize deck
             gameInfo[lastGameId].deck_count[i] = 4;
         }
 
@@ -82,37 +84,40 @@ contract BlackJack{
         uint8 drawCard2 = _shuffleAndTake(lastGameId);
         uint8 drawCard3 = _shuffleAndTake(lastGameId);
 
-        gameInfo[lastGameId].dealer_cards[gameInfo[lastGameId].dealer_TotalCards++] = drawCard1;     // Dealer draws 1 card
-        gameInfo[lastGameId].player_cards[gameInfo[lastGameId].player_TotalCards++] = drawCard2;     // Player draws 2 cards
-        gameInfo[lastGameId].player_cards[gameInfo[lastGameId].player_TotalCards++] = drawCard3;
+        gameInfo[lastGameId].dealer_cards[0] = drawCard1;                       // Dealer draws 1 card
+        gameInfo[lastGameId].player_cards[0] = drawCard2;                       // Player draws 2 cards
+        gameInfo[lastGameId].player_cards[1] = drawCard3;
+        
+        gameInfo[lastGameId].dealer_TotalCards += 1;
+        gameInfo[lastGameId].player_TotalCards += 2;
         
         gameInfo[lastGameId].dealer_score += drawCard1;
         gameInfo[lastGameId].player_score += (drawCard2 + drawCard3);
         
-        for (i = 0; i < gameInfo[lastGameId].player_TotalCards; i++) {
+        for (i = 0; i < 2; i++) {                                               // Player has 2 cards
             if (gameInfo[lastGameId].player_cards[i] == 1 && gameInfo[lastGameId].player_score + 10 <= 21)
                 gameInfo[lastGameId].player_score += 10;                        // Check for Ace; Ace = 1 or 11
         }
 
         if (gameInfo[lastGameId].player_score == 21){
-            revealAndStop(lastGameId);
+            (profit_amt, gameInfo[lastGameId].player_score, gameInfo[lastGameId].dealer_score) = revealAndStop();
         }else{
             gameInfo[lastGameId].bet_start = now;
         }
         
-        return (gameInfo[lastGameId].player_cards, gameInfo[lastGameId].dealer_cards);
+        return (gameInfo[lastGameId].player_score, gameInfo[lastGameId].player_cards, gameInfo[lastGameId].dealer_score, gameInfo[lastGameId].dealer_cards, profit_amt);
     }
     
     // Hit, called by player
-    function hit() public isPlayer returns(uint8 card, uint8[8] playerCards){
+    function hit() public isPlayer returns(uint8[8] playerCards, uint8 playerScore, uint8 dealerScore, uint profit_amt){
         require(addrToGameId[msg.sender] != 0, "Player is not playing");        // Check if player has started playing
         uint gameId = addrToGameId[msg.sender];                                 // Get player's game instance
 
         //if (gameInfo[gameId].playerAddr == msg.sender){                       // Check if the same player is calling hit
-        if(now > (gameInfo[gameId].bet_start + max_wait)){                      // Player has to hit withen max_wait period
-            revealAndStop(gameId);
+        if(now>(gameInfo[gameId].bet_start+max_wait+gameInfo[gameId].add_time)){// Player has to call hit() within max_wait period
+            (profit_amt, gameInfo[gameId].player_score, gameInfo[gameId].dealer_score) = revealAndStop();
         } else {
-            card = _shuffleAndTake(gameId);
+            uint8 card = _shuffleAndTake(gameId);
             gameInfo[gameId].player_cards[gameInfo[gameId].player_TotalCards++] = card;
             gameInfo[gameId].player_score += card;
 
@@ -123,31 +128,33 @@ contract BlackJack{
             }
         }
         
-        return (card, gameInfo[gameId].player_cards);
+        return (gameInfo[gameId].player_cards, gameInfo[gameId].player_score, gameInfo[gameId].dealer_score, profit_amt);
         //}else
         //  return (0,[]);
     }
 
     // view function to check player's cards
-    function viewPlayerCards() view external isPlayer returns(uint GameID, uint playerScore, uint8[8] playerCards, uint8[8] dealerCards, uint time_left){
+    function viewPlayerCards() view external isPlayer returns(uint GameID, uint8 playerScore, uint8[8] playerCards, uint8 dealerScore, uint8[8] dealerCards, uint time_left){
         require(addrToGameId[msg.sender] != 0, "Player is not playing");        // Check if player has started playing
         uint gameId = addrToGameId[msg.sender];                                 // Get player's game instance
 
         time_left = 0;
-        if ((gameInfo[gameId].bet_start + max_wait - now) > 0)
-            time_left = gameInfo[gameId].bet_start + max_wait - now;
-        return (gameId, gameInfo[gameId].player_score, gameInfo[gameId].player_cards, gameInfo[gameId].dealer_cards, time_left);
+        if ((gameInfo[gameId].bet_start + gameInfo[gameId].add_time + max_wait + - now) > 0)
+            time_left = gameInfo[gameId].bet_start + gameInfo[gameId].add_time + max_wait - now;
+        return (gameId, gameInfo[gameId].player_score, gameInfo[gameId].player_cards, gameInfo[gameId].dealer_score,gameInfo[gameId].dealer_cards, time_left);
     }
 
     // Function to be called by player when he wants to stop
-    function revealAndStop(uint gameId) public isPlayer returns(bool result, uint8 playerScore, uint8 dealerScore){
-       return (_endgame(gameId), gameInfo[gameId].player_score, gameInfo[gameId].dealer_score);
+    function revealAndStop() public isPlayer returns(uint profit_amt, uint8 playerScore, uint8 dealerScore){
+        require(addrToGameId[msg.sender] != 0, "Player is not playing");        // Check if player has started playing
+        uint gameId = addrToGameId[msg.sender];
+        profit_amt = _endgame(gameId);
+        return (profit_amt, gameInfo[gameId].player_score, gameInfo[gameId].dealer_score);
     }
     
     // Function to check cards and end game
-    function _endgame(uint gameId) internal returns(bool result){
+    function _endgame(uint gameId) internal returns(uint profit_amt){
         require(gameInfo[gameId].gotPaid == false, 'Player is already paid!');  // Check if player has received winnings
-        result = false;
 
         for (uint8 i = 0; i < gameInfo[gameId].player_TotalCards; i++) {
             // Ace = 1 or 11
@@ -156,20 +163,18 @@ contract BlackJack{
         }
 
         if (gameInfo[gameId].player_score > 21 ){                               // Busted!
-            result = false;
+            profit_amt = 0;
         } else{
             _revealDealerCards(gameId);                                         // Dealer draws till dealer_score <= 17
 
             if(gameInfo[gameId].dealer_score > 21 || gameInfo[gameId].player_score > gameInfo[gameId].dealer_score){
-                // Player wins 2*bet_amount
                 gameInfo[gameId].gotPaid = true;
-                result = true;
-                gameInfo[gameId].playerAddr.transfer(2*gameInfo[gameId].bet_amount);
+                profit_amt = 2*gameInfo[gameId].bet_amount;
+                gameInfo[gameId].playerAddr.transfer(profit_amt);               // Player wins 2*bet_amount
             } else if(gameInfo[gameId].player_score == gameInfo[gameId].dealer_score){
-                // Player gets back his bet_amount
                 gameInfo[gameId].gotPaid = true;
-                result = true;
-                gameInfo[gameId].playerAddr.transfer(gameInfo[gameId].bet_amount);
+                profit_amt = gameInfo[gameId].bet_amount;                       // Player gets back his bet_amount
+                gameInfo[gameId].playerAddr.transfer(profit_amt);
             }
         }
 
@@ -196,8 +201,8 @@ contract BlackJack{
     }
 
     // Function to help in random card pick
-    function _getRandom() internal view returns(uint rand){
-        bytes32 hashval = keccak256(abi.encodePacked(now, lastGameId));
+    function _getRandom(uint gameId) internal returns(uint rand){
+        bytes32 hashval = keccak256(abi.encodePacked(now, gameInfo[gameId].player_TotalCards, gameInfo[gameId].dealer_TotalCards, ++counter));
         rand = uint256(hashval);
     }
 
@@ -205,7 +210,7 @@ contract BlackJack{
     function _shuffleAndTake(uint gameId) internal returns(uint8 card) {
         bool card_found = false;
         while(!card_found){
-            uint _rand = (_getRandom() % 52) + 1;
+            uint _rand = (_getRandom(gameId) % 52) + 1;
             if (gameInfo[gameId].deck_count[_rand % 13] > 0){                   // Check if any of the suits is left
                 card = uint8(_rand % 13 + 1);
 
@@ -220,32 +225,24 @@ contract BlackJack{
     }
 
     function ifPlayerUnresponsive(uint gameId) external onlyOwner{
-        if(now > gameInfo[gameId].bet_start + max_wait) {                       // Owner can end game (after wait period is over) if player is unresponsive
-            revealAndStop(gameId);
-        } else {
-
-        }
+        if (now>gameInfo[gameId].bet_start+gameInfo[gameId].add_time+max_wait)  // Owner can end game (after wait period is over) if player is unresponsive
+            _endgame(gameId);
     }
 
-    function changeValues(uint _minimum_bet, uint _max_wait) external onlyOwner{
+    function changeValues(uint _minimum_bet, uint _max_wait, uint _counter) external onlyOwner{
         minimum_bet = _minimum_bet;
         max_wait = _max_wait;
+        counter = _counter;
+    }
+
+    function addTime(uint _gameId, uint _add_time) external onlyOwner{          // Owner can add more time for a specific player
+        gameInfo[_gameId].add_time = _add_time;
     }
 
     function reset_game(uint gameId) internal{
-    	total_BetAmount -= gameInfo[gameId].bet_amount;
+        total_BetAmount -= gameInfo[gameId].bet_amount;
         addrToGameId[gameInfo[gameId].playerAddr] = 0;
         delete gameInfo[gameId];
-        /*
-        playerAddr = 0;
-        bet_amount = 0;
-        player_TotalCards = 0;
-        bet_start = 0;
-        
-        for (uint8 i = 0; i < 13; i++){
-            deck_count[i] = 4;
-        }
-        */
     }
     
     function transferToDealer() public payable{}                                // Anyone can send Ether to contract
