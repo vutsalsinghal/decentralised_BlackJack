@@ -6,8 +6,7 @@ pragma solidity ^0.4.24;
  * @author - Vutsal Singhal <vutsalsinghal[at]gmail[dot]com>
  * @author - Amit Panghal <panghalamit1892[at]gmail[dot]com>
  * 
- * @notice - 
- * @dev    - 
+ * @notice - Any no.of players can play where each player is playing against the dealer.
 */
 
 contract BlackJack{
